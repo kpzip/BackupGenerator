@@ -1,0 +1,15 @@
+{
+	"version": "1.0",
+	"from": "local",
+	"to": "local",
+	"sftp_addr": "127.0.0.1:22",
+	"sftp_user": "prompt",
+	"sftp_pass": "prompt",
+	"files": {
+		[
+			"C:/backuptest/test",
+			"C:/backuptest/backup/test"
+		]
+		
+	}
+}

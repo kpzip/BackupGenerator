@@ -5,11 +5,11 @@
 	"sftp_addr": "127.0.0.1:22",
 	"sftp_user": "prompt",
 	"sftp_pass": "prompt",
-	"files": {
-		[
-			"C:/backuptest/test",
-			"C:/backuptest/backup/test"
-		]
+	"files": [
+		{
+			"from": "C:/backuptest/test",
+			"to": "C:/backuptest/backup/test"
+		}
 		
-	}
+	]
 }

@@ -8,14 +8,14 @@
 	"maxbytes": 1024,
 	"files": [
 		{
-			"from": "tests/test_file",
-			"to": "tests/backup/test_file"
+			"from": "test_file",
+			"to": "backup/test_file"
 		}
 	],
 	"folders": [
 		{
-			"from": "tests/test_dir/",
-			"to": "tests/backup/test_dir/"
+			"from": "test_dir/",
+			"to": "backup/test_dir/"
 		}
 	]
 }

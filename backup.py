@@ -17,6 +17,12 @@ class FileSystemInterface:
     
     def getFilesRecursive(self, path: str) -> list:
         pass
+        
+    def __enter__(self) -> None:
+        return self
+        
+    def __exit__(self, *args) -> None:
+        pass
 
 class SFTPFileSystem(FileSystemInterface):
     
@@ -24,13 +30,18 @@ class SFTPFileSystem(FileSystemInterface):
         self.connection = sftp.Connection(sftpaddr, Username = user, Password = password)
     
     def writeFile(self, filepath: str, filedata: bytes) -> None:
-        pass
+        with self.connection.open(filepath, "wb") as file:
+            file.write(filedata)
     
     def readFile(self, filepath: str) -> bytes:
-        pass
+        with self.connection.open(filepath, "rb") as file:
+            return file.read()
         
     def getFilesRecursive(self, path: str) -> list:
         pass
+        
+    def __exit__(self, *args) -> None:
+        self.connection.close()
 
 class LocalFileSystem(FileSystemInterface):
     
@@ -75,13 +86,12 @@ def main(configLocation: str) -> None:
     print("Initiating Backup...")
     with open(configLocation) as cfgfile:
         cfg = json.load(cfgfile)
-    fs_from = file_system_factory(cfg["from"], cfg)
-    fs_to = file_system_factory(cfg["to"], cfg)
-    for file in cfg["files"]:
-        copy_file(fs_from, fs_to, file["from"], file["to"])
-    for directory in cfg["folders"]:
-        for file in fs_from.getFilesRecursive(directory["from"]):
-            copy_file(fs_from, fs_to, directory["from"] + file, directory["to"] + file)
+    with file_system_factory(cfg["from"], cfg) as fs_from, file_system_factory(cfg["to"], cfg) as fs_to:
+        for file in cfg["files"]:
+            copy_file(fs_from, fs_to, file["from"], file["to"])
+        for directory in cfg["folders"]:
+            for file in fs_from.getFilesRecursive(directory["from"]):
+                copy_file(fs_from, fs_to, directory["from"] + file, directory["to"] + file)
     print("Backup Complete!")
 
 if __name__ == "__main__":

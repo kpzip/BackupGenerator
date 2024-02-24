@@ -1,51 +1,53 @@
 import json
 import sys
 import os
+
 # kind of a hack, but so be it
-directory = os.getcwd().removesuffix("\\tests")
-sys.path.insert(1, directory)
+script_directory = os.getcwd().removesuffix("\\tests")
+sys.path.insert(1, script_directory)
 import backup
 
-#enable and define colors
+# enable and define colors
 os.system("color")
 
-GREEN = '\033[92m'
-RED = '\033[91m'
-RESET = '\033[00m'
-
+GREEN: str = '\033[92m'
+RED: str = '\033[91m'
+RESET: str = '\033[00m'
 
 # Get config values
 testconfig = "test_config.json"
 
 with open(testconfig, "r") as configfile:
-    config = json.load(configfile)
-    maxbytes = config["maxbytes"]
-    files = config["files"]
-    folders = config["folders"]
+    config: dict = json.load(configfile)
+    max_bytes: int = config["maxbytes"]
+    files: list[dict[str, str]] = config["files"]
+    folders: list[dict[str, str]] = config["folders"]
 
-#file system object for reading file data 
+# file system object for reading file data
 fs = backup.LocalFileSystem()
 
-#whether or not a test has failed yet
-passing = True
+# whether a test has failed yet
+passing: bool = True
 
-#verify if a file exists and if it has the contents as the supplied master file
-def verifyFile(backup: str, master: str) -> None:
+
+# verify if a file exists and if it has the contents as the supplied master file
+def verifyFile(backup_dir: str, master_dir: str) -> None:
+    global passing
     try:
-        with open(backup, "rb") as b, open(master, "rb") as m:
-            while (readdata := m.read(maxbytes)) != b"":
-                assert readdata == b.read(maxbytes)
+        with open(backup_dir, "rb") as b, open(master_dir, "rb") as m:
+            while (read_data := m.read(max_bytes)) != b"":
+                assert read_data == b.read(max_bytes)
     except FileNotFoundError:
-        print("Missing file! : " + file["to"])
+        print("Missing file! : " + backup_dir)
         passing = False
     except AssertionError:
-        print("Wrong file data! : " + file["to"])
+        print("Wrong file data! : " + backup_dir)
         passing = False
-    
-    
-#run tests
+
+
+# run tests
 def test() -> None:
-    backup.main(testconfig)
+    backup.main([testconfig])
     for file in files:
         verifyFile(file["to"], file["from"])
     for directory in folders:
@@ -53,10 +55,11 @@ def test() -> None:
             verifyFile(directory["to"] + file, directory["from"] + file)
     print("Done!")
     print("------------------------")
-    print((GREEN + "BUILD SUCCESSFUL" + RESET) if passing else (RED + "BUILD FAILED" + RESET))
+    print((GREEN + "TEST SUCCESSFUL" + RESET) if passing else (RED + "TEST FAILED" + RESET))
     print("------------------------")
     if not passing:
         exit(-1)
+
 
 if __name__ == "__main__":
     test()

@@ -1,11 +1,12 @@
 import json
 import sys
 import os
+from io import BufferedIOBase
 
 # kind of a hack, but so be it
 script_directory = os.getcwd().removesuffix("\\tests")
 sys.path.insert(1, script_directory)
-import backup
+from backup import LocalFileSystem, main
 
 # enable and define colors
 os.system("color")
@@ -15,8 +16,9 @@ RED: str = '\033[91m'
 RESET: str = '\033[00m'
 
 # Get config values
-testconfig = "test_config.json"
+testconfig: str = "test_config.json"
 
+configfile: BufferedIOBase
 with open(testconfig, "r") as configfile:
     config: dict = json.load(configfile)
     max_bytes: int = config["maxbytes"]
@@ -24,7 +26,7 @@ with open(testconfig, "r") as configfile:
     folders: list[dict[str, str]] = config["folders"]
 
 # file system object for reading file data
-fs = backup.LocalFileSystem()
+fs: LocalFileSystem = LocalFileSystem()
 
 # whether a test has failed yet
 passing: bool = True
@@ -34,7 +36,10 @@ passing: bool = True
 def verifyFile(backup_dir: str, master_dir: str) -> None:
     global passing
     try:
+        b: BufferedIOBase
+        m: BufferedIOBase
         with open(backup_dir, "rb") as b, open(master_dir, "rb") as m:
+            read_data: bytes
             while (read_data := m.read(max_bytes)) != b"":
                 assert read_data == b.read(max_bytes)
     except FileNotFoundError:
@@ -47,10 +52,13 @@ def verifyFile(backup_dir: str, master_dir: str) -> None:
 
 # run tests
 def test() -> None:
-    backup.main([testconfig])
+    main([testconfig])
+    file: dict[str, str]
     for file in files:
         verifyFile(file["to"], file["from"])
+    directory: dict[str, str]
     for directory in folders:
+        file: str
         for file in fs.getFilesRecursive(directory["from"]):
             verifyFile(directory["to"] + file, directory["from"] + file)
     print("Done!")

@@ -161,3 +161,8 @@ cython_debug/
 
 #bak files
 **/*.bak
+
+#Key files (Might be used for sftp, it would be really bad if these got committed!)
+**/*.key
+**/*.ppk
+**/*.pem

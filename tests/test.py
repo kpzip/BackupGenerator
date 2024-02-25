@@ -1,7 +1,7 @@
 import json
 import sys
 import os
-from io import BufferedIOBase
+from io import BufferedIOBase, TextIOWrapper
 
 # kind of a hack, but so be it
 script_directory = os.getcwd().removesuffix("\\tests")
@@ -16,10 +16,10 @@ RED: str = '\033[91m'
 RESET: str = '\033[00m'
 
 # Get config values
-testconfig: str = "test_config.json"
+test_config: str = "test_config.json"
 
-configfile: BufferedIOBase
-with open(testconfig, "r") as configfile:
+configfile: TextIOWrapper
+with open(test_config, "r") as configfile:
     config: dict = json.load(configfile)
     max_bytes: int = config["maxbytes"]
     files: list[dict[str, str]] = config["files"]
@@ -52,15 +52,19 @@ def verifyFile(backup_dir: str, master_dir: str) -> None:
 
 # run tests
 def test() -> None:
-    main([testconfig])
+
+    # Run Backup
+    main([test_config])
+
+    # Verify file integrity and print results
     file: dict[str, str]
     for file in files:
         verifyFile(file["to"], file["from"])
     directory: dict[str, str]
     for directory in folders:
-        file: str
-        for file in fs.getFilesRecursive(directory["from"]):
-            verifyFile(directory["to"] + file, directory["from"] + file)
+        filename: str
+        for filename in fs.getFilesRecursive(directory["from"]):
+            verifyFile(directory["to"] + filename, directory["from"] + filename)
     print("Done!")
     print("------------------------")
     print((GREEN + "TEST SUCCESSFUL" + RESET) if passing else (RED + "TEST FAILED" + RESET))

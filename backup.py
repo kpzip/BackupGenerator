@@ -4,6 +4,7 @@ import os
 import getpass
 from typing import Self
 from io import BufferedIOBase, TextIOWrapper
+from paramiko import SFTPFile
 
 # Modify if you want the config file named something else, or in another directory
 config_names: list[str] = ["config.json"]
@@ -28,28 +29,33 @@ class FileSystemInterface:
         pass
 
 
+# TODO update in the future to allow for both key and user/password authentication
 class SFTPFileSystem(FileSystemInterface):
 
-    def __init__(self, sftpaddr: str, user: str, password: str):
+    def __init__(self, sftpaddr: str, user: str, password: str, port: int):
         self.address: str = sftpaddr
         self.username: str = user
         self.password: str = password
+        self.port: int = port
 
     def writeFile(self, filepath: str, filedata: bytes) -> None:
-        file: BufferedIOBase
+        file: SFTPFile
         with self.connection.open(filepath, "wb") as file:
             file.write(filedata)
 
     def readFile(self, filepath: str) -> bytes:
-        file: BufferedIOBase
+        file: SFTPFile
         with self.connection.open(filepath, "rb") as file:
             return file.read()
 
     def getFilesRecursive(self, path: str) -> list:
-        pass
+        raise NotImplementedError
 
     def __enter__(self) -> Self:
-        self.connection: sftp.Connection = sftp.Connection(self.address, username=self.username, password=self.password)
+        self.connection: sftp.Connection = sftp.Connection(self.address,
+                                                           username=self.username,
+                                                           password=self.password,
+                                                           port=self.port)
         return self
 
     def __exit__(self, *args) -> None:
@@ -85,15 +91,23 @@ class LocalFileSystem(FileSystemInterface):
 
 
 def file_system_factory(fstype: str, config: dict) -> FileSystemInterface:
+    fstype = config[fstype]
     if fstype == "sftp":
         addr: str = config["sftp_addr"]
         user: str = config["sftp_user"]
         passwd: str = config["sftp_pass"]
+        port: int
+        if "sftp_port" in config:
+            port = config["sftp_port"]
+        elif "port" in config:
+            port = config["port"]
+        else:
+            port = 22
         if user == "prompt":
             user = input("SFTP username for address " + addr + " :")
         if passwd == "prompt":
             passwd = getpass.getpass(prompt=("SFTP password for address " + addr + " :"))
-        return SFTPFileSystem(addr, user, passwd)
+        return SFTPFileSystem(addr, user, passwd, port)
     if fstype == "local":
         return LocalFileSystem()
     return LocalFileSystem()
@@ -112,15 +126,15 @@ def main(config_locations: list[str]) -> None:
             cfg: dict = json.load(cfgfile)
         fs_from: FileSystemInterface
         fs_to: FileSystemInterface
-        with file_system_factory(cfg["from"], cfg) as fs_from, file_system_factory(cfg["to"], cfg) as fs_to:
+        with file_system_factory("from", cfg) as fs_from, file_system_factory("to", cfg) as fs_to:
             file: dict[str, str]
             for file in cfg["files"]:
                 copy_file(fs_from, fs_to, file["from"], file["to"])
             directory: dict[str, str]
             for directory in cfg["folders"]:
-                file: str
-                for file in fs_from.getFilesRecursive(directory["from"]):
-                    copy_file(fs_from, fs_to, directory["from"] + file, directory["to"] + file)
+                filename: str
+                for filename in fs_from.getFilesRecursive(directory["from"]):
+                    copy_file(fs_from, fs_to, directory["from"] + filename, directory["to"] + filename)
         print("Backup Complete!")
 
 

@@ -40,7 +40,7 @@ def verifyFile(backup_dir: str, master_dir: str) -> None:
         m: BufferedIOBase
         with open(backup_dir, "rb") as b, open(master_dir, "rb") as m:
             read_data: bytes
-            while (read_data := m.read(max_bytes)) != b"":
+            while read_data := m.read(max_bytes):
                 assert read_data == b.read(max_bytes)
     except FileNotFoundError:
         print("Missing file! : " + backup_dir)

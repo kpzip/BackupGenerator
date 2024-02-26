@@ -2,55 +2,105 @@ import json
 import pysftp as sftp
 import os
 import getpass
-from typing import Self
+from typing import Self, Generator
+from typing_extensions import override
 from io import BufferedIOBase, TextIOWrapper
+
 from paramiko import SFTPFile
 
 # Modify if you want the config file named something else, or in another directory
 config_names: list[str] = ["config.json"]
 
 
-# TODO, improve this by only reading a certain number of bytes at a time
+# Represents an abstract file system that can be written to and read from
 class FileSystemInterface:
 
-    def writeFile(self, filepath: str, filedata: bytes) -> None:
+    def __init__(self) -> None:
+        self.isclosed: bool = False
+
+    def writeFile(self, filepath: str, filedata: bytes, append: bool = True) -> None:
         raise NotImplementedError
 
-    def readFile(self, filepath: str) -> bytes:
+    def readFile(self, filepath: str, chunk_size: int) -> Generator[bytes, None, None]:
         raise NotImplementedError
 
     def getFilesRecursive(self, path: str) -> list:
         raise NotImplementedError
+
+    def close(self) -> None:
+        pass
+
+    def closeIfNotClosed(self) -> None:
+        if not self.isclosed:
+            self.close()
+            self.isclosed = True
 
     def __enter__(self) -> Self:
         return self
 
     def __exit__(self, *args) -> None:
-        pass
+        self.closeIfNotClosed()
+
+    def __del__(self):
+        self.closeIfNotClosed()
 
 
 # TODO update in the future to allow for both key and user/password authentication
 class SFTPFileSystem(FileSystemInterface):
 
-    def __init__(self, sftpaddr: str, user: str, password: str, port: int):
+    def __init__(self, sftpaddr: str, user: str, password: str, port: int) -> None:
+        super().__init__()
         self.address: str = sftpaddr
         self.username: str = user
         self.password: str = password
         self.port: int = port
+        self.write_file: SFTPFile | None = None
+        self.write_path: str = ""
+        self.write_mode: bool = False
 
-    def writeFile(self, filepath: str, filedata: bytes) -> None:
-        file: SFTPFile
-        with self.connection.open(filepath, "wb") as file:
-            file.write(filedata)
+    @override
+    def writeFile(self, filepath: str, filedata: bytes, append: bool = True) -> None:
+        if self.write_file is None or self.write_path != filepath or self.write_mode != append:
+            if self.write_file is not None:
+                self.write_file.close()
+            self.write_file = self.connection.open(filepath, "ab" if append else "wb")
+            self.write_path = filepath
+            self.write_mode = append
+        self.write_file.write(filedata)
 
-    def readFile(self, filepath: str) -> bytes:
+        # file: SFTPFile
+        # with self.connection.open(filepath, "wb") as file:
+        #     file.write(filedata)
+
+    @override
+    def readFile(self, filepath: str, chunk_size: int) -> Generator[bytes, None, None]:
         file: SFTPFile
         with self.connection.open(filepath, "rb") as file:
-            return file.read()
+            read_bytes: bytes
+            while read_bytes := file.read(chunk_size):
+                yield read_bytes
 
+    @override
     def getFilesRecursive(self, path: str) -> list:
-        raise NotImplementedError
+        filelist: list[str] = []
 
+        def addFile(file: str) -> None:
+            nonlocal filelist
+            filelist.append(file)
+
+        def doNothing(directory: str) -> None:
+            pass
+
+        self.connection.walktree(path, addFile, doNothing, addFile, recurse=True)
+        return filelist
+
+    @override
+    def close(self) -> None:
+        self.connection.close()
+        if self.write_file is not None:
+            self.write_file.close()
+
+    @override
     def __enter__(self) -> Self:
         self.connection: sftp.Connection = sftp.Connection(self.address,
                                                            username=self.username,
@@ -58,26 +108,39 @@ class SFTPFileSystem(FileSystemInterface):
                                                            port=self.port)
         return self
 
-    def __exit__(self, *args) -> None:
-        self.connection.close()
-
 
 class LocalFileSystem(FileSystemInterface):
 
-    def __init__(self):
-        pass
+    def __init__(self) -> None:
+        super().__init__()
+        self.write_file: BufferedIOBase | None = None
+        self.write_path: str = ""
+        self.write_mode: bool = False
 
-    def writeFile(self, filepath: str, filedata: bytes) -> None:
-        os.makedirs(os.path.dirname(filepath), exist_ok=True)
-        file: BufferedIOBase
-        with open(filepath, "wb") as file:
-            file.write(filedata)
+    @override
+    def writeFile(self, filepath: str, filedata: bytes, append: bool = True) -> None:
+        if self.write_file is None or self.write_path != filepath or self.write_mode != append:
+            if self.write_file is not None:
+                self.write_file.close()
+            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            self.write_file = open(filepath, "ab" if append else "wb")
+            self.write_path = filepath
+            self.write_mode = append
+        self.write_file.write(filedata)
 
-    def readFile(self, filepath: str) -> bytes:
+        # file: BufferedIOBase
+        # with open(filepath, "wb") as file:
+        #     file.write(filedata)
+
+    @override
+    def readFile(self, filepath: str, chunk_size: int) -> Generator[bytes, None, None]:
         file: BufferedIOBase
         with open(filepath, "rb") as file:
-            return file.read()
+            read_bytes: bytes
+            while read_bytes := file.read(chunk_size):
+                yield read_bytes
 
+    @override
     def getFilesRecursive(self, path: str) -> list:
         filelist: list[str] = []
         root: str
@@ -89,9 +152,16 @@ class LocalFileSystem(FileSystemInterface):
                 filelist.append((os.path.relpath(root, path) + "\\" + file))
         return filelist
 
+    @override
+    def close(self) -> None:
+        if self.write_file is not None:
+            self.write_file.close()
+
 
 def file_system_factory(fstype: str, config: dict) -> FileSystemInterface:
+    # Read the true type from the config
     fstype = config[fstype]
+
     if fstype == "sftp":
         addr: str = config["sftp_addr"]
         user: str = config["sftp_user"]
@@ -113,28 +183,45 @@ def file_system_factory(fstype: str, config: dict) -> FileSystemInterface:
     return LocalFileSystem()
 
 
-def copy_file(fs_in: FileSystemInterface, fs_out: FileSystemInterface, dir_in: str, dir_out: str) -> None:
-    fs_out.writeFile(dir_out, fs_in.readFile(dir_in))
+def copy_file(fs_in: FileSystemInterface, fs_out: FileSystemInterface, path_in: str, path_out: str,
+              chunk_size: int) -> None:
+    file_reader: Generator[bytes, None, None] = fs_in.readFile(path_in, chunk_size)
+    chunk: bytes
+    try:
+        chunk = file_reader.__next__()
+        fs_out.writeFile(path_out, chunk, append=False)
+    except StopIteration:
+        pass
+    for chunk in file_reader:
+        fs_out.writeFile(path_out, chunk, append=True)
+
+    # fs_out.writeFile(path_out, fs_in.readFile(path_in))
 
 
 def main(config_locations: list[str]) -> None:
     for i in range(0, len(config_locations)):
         config_location: str = config_locations[i]
-        print("Initiating Backup (" + str(i) + "/" + str(len(config_locations)) + ") ...")
+        print("Initiating Backup (" + str(i + 1) + "/" + str(len(config_locations)) + ") ...")
         cfgfile: TextIOWrapper
         with open(config_location) as cfgfile:
             cfg: dict = json.load(cfgfile)
+
+        # Create objects for interfacing with filesystem(s)
         fs_from: FileSystemInterface
         fs_to: FileSystemInterface
         with file_system_factory("from", cfg) as fs_from, file_system_factory("to", cfg) as fs_to:
+
+            # Copy individual files
             file: dict[str, str]
             for file in cfg["files"]:
-                copy_file(fs_from, fs_to, file["from"], file["to"])
+                copy_file(fs_from, fs_to, file["from"], file["to"], cfg["maxbytes"])
+
+            # Copy folders
             directory: dict[str, str]
             for directory in cfg["folders"]:
                 filename: str
                 for filename in fs_from.getFilesRecursive(directory["from"]):
-                    copy_file(fs_from, fs_to, directory["from"] + filename, directory["to"] + filename)
+                    copy_file(fs_from, fs_to, directory["from"] + filename, directory["to"] + filename, cfg["maxbytes"])
         print("Backup Complete!")
 
 

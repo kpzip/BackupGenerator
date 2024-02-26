@@ -155,6 +155,24 @@ class LocalFileSystem(FileSystemInterface):
             self.write_file.close()
 
 
+class GoogleDriveFileSystem(FileSystemInterface):
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    @override
+    def writeFile(self, filepath: str, filedata: bytes, append: bool = True) -> None:
+        raise NotImplementedError
+
+    @override
+    def readFile(self, filepath: str, chunk_size: int) -> Generator[bytes, None, None]:
+        raise NotImplementedError
+
+    @override
+    def getFilesRecursive(self, path: str) -> list:
+        raise NotImplementedError
+
+
 existingSftpConnection: SFTPFileSystem | None = None
 
 
@@ -203,7 +221,6 @@ def copy_file(fs_in: FileSystemInterface, fs_out: FileSystemInterface, path_in: 
 
 
 def main(config_locations: list[str]) -> None:
-
     # loop through each config name and execute backup
     for i in range(0, len(config_locations)):
 

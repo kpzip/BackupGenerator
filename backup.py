@@ -88,10 +88,7 @@ class SFTPFileSystem(FileSystemInterface):
             nonlocal filelist
             filelist.append(file)
 
-        def doNothing(directory: str) -> None:
-            pass
-
-        self.connection.walktree(path, addFile, doNothing, addFile, recurse=True)
+        self.connection.walktree(path, addFile, lambda d: None, addFile, recurse=True)
         return filelist
 
     @override
@@ -158,26 +155,33 @@ class LocalFileSystem(FileSystemInterface):
             self.write_file.close()
 
 
+existingSftpConnection: SFTPFileSystem | None = None
+
+
 def file_system_factory(fstype: str, config: dict) -> FileSystemInterface:
+    global existingSftpConnection
+
     # Read the true type from the config
     fstype = config[fstype]
 
     if fstype == "sftp":
-        addr: str = config["sftp_addr"]
-        user: str = config["sftp_user"]
-        passwd: str = config["sftp_pass"]
-        port: int
-        if "sftp_port" in config:
-            port = config["sftp_port"]
-        elif "port" in config:
-            port = config["port"]
-        else:
-            port = 22
-        if user == "prompt":
-            user = input("SFTP username for address " + addr + " :")
-        if passwd == "prompt":
-            passwd = getpass.getpass(prompt=("SFTP password for address " + addr + " :"))
-        return SFTPFileSystem(addr, user, passwd, port)
+        if existingSftpConnection is None:
+            addr: str = config["sftp_addr"]
+            user: str = config["sftp_user"]
+            passwd: str = config["sftp_pass"]
+            port: int
+            if "sftp_port" in config:
+                port = config["sftp_port"]
+            elif "port" in config:
+                port = config["port"]
+            else:
+                port = 22
+            if user == "prompt":
+                user = input("SFTP username for address " + addr + " :")
+            if passwd == "prompt":
+                passwd = getpass.getpass(prompt=("SFTP password for address " + addr + " :"))
+            existingSftpConnection = SFTPFileSystem(addr, user, passwd, port)
+        return existingSftpConnection
     if fstype == "local":
         return LocalFileSystem()
     return LocalFileSystem()
@@ -199,9 +203,13 @@ def copy_file(fs_in: FileSystemInterface, fs_out: FileSystemInterface, path_in: 
 
 
 def main(config_locations: list[str]) -> None:
+
+    # loop through each config name and execute backup
     for i in range(0, len(config_locations)):
+
         config_location: str = config_locations[i]
         print("Initiating Backup (" + str(i + 1) + "/" + str(len(config_locations)) + ") ...")
+
         cfgfile: TextIOWrapper
         with open(config_location) as cfgfile:
             cfg: dict = json.load(cfgfile)
@@ -222,6 +230,7 @@ def main(config_locations: list[str]) -> None:
                 filename: str
                 for filename in fs_from.getFilesRecursive(directory["from"]):
                     copy_file(fs_from, fs_to, directory["from"] + filename, directory["to"] + filename, cfg["maxbytes"])
+
         print("Backup Complete!")
 
 

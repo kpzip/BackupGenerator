@@ -6,7 +6,7 @@
 	"sftp_user": "prompt",
 	"sftp_pass": "prompt",
 	"sftp_port": 22,
-	"maxbytes": 64,
+	"maxbytes": 1024,
 	"files": [
 		{
 			"from": "test_file",

@@ -93,9 +93,9 @@ class SFTPFileSystem(FileSystemInterface):
 
     @override
     def close(self) -> None:
-        self.connection.close()
         if self.write_file is not None:
             self.write_file.close()
+        self.connection.close()
 
     @override
     def __enter__(self) -> Self:
@@ -119,7 +119,8 @@ class LocalFileSystem(FileSystemInterface):
         if self.write_file is None or self.write_path != filepath or self.write_mode != append:
             if self.write_file is not None:
                 self.write_file.close()
-            os.makedirs(os.path.dirname(filepath), exist_ok=True)
+            if self.write_path != filepath:
+                os.makedirs(os.path.dirname(filepath), exist_ok=True)
             self.write_file = open(filepath, "ab" if append else "wb")
             self.write_path = filepath
             self.write_mode = append
@@ -173,6 +174,8 @@ class GoogleDriveFileSystem(FileSystemInterface):
         raise NotImplementedError
 
 
+# Use this if transferring from sftp to sftp since it prevents multiple different connections from being established
+# In the future, It may be possible to go from one sftp server to another, in that case this will need to be rewritten
 existingSftpConnection: SFTPFileSystem | None = None
 
 
@@ -213,7 +216,8 @@ def copy_file(fs_in: FileSystemInterface, fs_out: FileSystemInterface, path_in: 
         chunk = file_reader.__next__()
         fs_out.writeFile(path_out, chunk, append=False)
     except StopIteration:
-        pass
+        # This is the case when the file is empty, so we need to write an empty file.
+        fs_out.writeFile(path_out, b"", append=False)
     for chunk in file_reader:
         fs_out.writeFile(path_out, chunk, append=True)
 
